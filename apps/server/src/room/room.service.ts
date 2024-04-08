@@ -1,14 +1,10 @@
-import { Inject, Injectable, forwardRef } from '@nestjs/common';
-import { RedisService } from 'src/redis/redis.service';
+import { Injectable } from '@nestjs/common';
 
 // const createKey = (...identifier: string[]) => identifier.join(':');
 
 @Injectable()
 export class RoomService {
-  constructor(
-    @Inject(forwardRef(() => RedisService))
-    private readonly redisService: RedisService,
-  ) {}
+  constructor() {}
 
   // async findRoomUser(roomId: string) {
   //   const key = createKey('room', 'users', roomId);
