@@ -53,7 +53,7 @@ export const WebSocketProvider: React.FC<PropsWithChildren> = ({
   children,
 }) => {
   const connection = useRef<Socket<ListenEvents, EmitEvents>>(io());
-  const id = useRef<string>();
+  const id = useRef<string>(import.meta.env.VITE_SIGNAL_SERVER);
 
   const value = useMemo<WebSocketContextType>(
     () => ({ connection: connection.current, id: id.current }),
