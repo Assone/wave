@@ -24,10 +24,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, ""),
         },
-        "/socket.io": {
-          target: "ws://localhost:3000",
-          ws: true,
-        },
+        // "/socket.io": {
+        //   target: "ws://localhost:3000/socket.io",
+        //   ws: true,
+        //   rewrite: (path) => path.replace(/^\/socket.io/, ""),
+        // },
       },
     },
   };

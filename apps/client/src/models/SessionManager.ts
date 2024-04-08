@@ -58,18 +58,6 @@ const onConnectionStateChangeListener = (
   });
 };
 
-// const onNegotiationneededListener = (
-//   connection: RTCPeerConnection,
-//   socket: WebSocket,
-//   sid: string
-// ) => {
-//   connection.addEventListener("negotiationneeded", async () => {
-//     const offer = await connection.createOffer();
-
-//     socket.emit("offer", { sid, offer });
-//   });
-// };
-
 const onIceConnectionStateChange = (connection: RTCPeerConnection) => {
   connection.addEventListener("icecandidateerror", () => {
     if (connection.iceConnectionState === "failed") {
@@ -94,7 +82,9 @@ export default class SessionManager {
   }
 
   async createHost({ sid, socket, stream, onDone }: CreateHostSessionOptions) {
-    const connection = new RTCPeerConnection();
+    const connection = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
 
     onIceCandidateListener(connection, socket, sid, "host");
     onConnectionStateChangeListener(connection, onDone);
@@ -113,7 +103,9 @@ export default class SessionManager {
   }
 
   createClient({ sid, socket, onDone, onTrack }: CreateClientSessionOptions) {
-    const connection = new RTCPeerConnection();
+    const connection = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
 
     onIceCandidateListener(connection, socket, sid, "client");
     onConnectionStateChangeListener(connection, onDone);
