@@ -1,70 +1,69 @@
 import useDevices from "./useDevices";
 import useUserMedia from "./useUserMedia";
+import useWatch from "./useWatch";
 
 export default function useMediaInput() {
   const [cameraStatus, setCameraStatus] = useState(false);
   const [micStatus, setMicStatus] = useState(false);
-  const { stream, start, stop } = useUserMedia({
-    constraints: {
-      video: cameraStatus,
-      audio: micStatus,
-    },
-  });
+  const [selectedCamera, setSelectedCamera] = useState<string>();
+  const [selectedAudio, setSelectedAudio] = useState<string>();
+  const { videoInput, audioInput, permissionGranted, ensurePermissions } =
+    useDevices({
+      constraints: { audio: true, video: true },
+    });
+  const { stream, restart, stop } = useUserMedia();
 
-  const { audioInput, videoInput, ensurePermissions } = useDevices({
-    constraints: { video: cameraStatus, audio: micStatus },
-  });
-
-  useEffect(() => {
-    if (cameraStatus || micStatus) {
-      start();
-      ensurePermissions();
-    }
-
-    return () => {
+  const onStartOrStop = async (camera: boolean, audio: boolean) => {
+    if (camera === false && audio === false) {
       stop();
-    };
-  }, [cameraStatus, ensurePermissions, micStatus, start, stop]);
+    } else {
+      if (permissionGranted === false) ensurePermissions();
 
-  const onOpenCamera = () => {
+      await restart({
+        video: camera ? { deviceId: selectedCamera } : false,
+        audio: audio ? { deviceId: selectedAudio } : false,
+      });
+    }
+  };
+
+  const onOpenCamera = async () => {
     setCameraStatus(true);
+    await onStartOrStop(true, micStatus);
   };
 
-  const onOffCamera = () => {
+  const onOffCamera = async () => {
     setCameraStatus(false);
+    await onStartOrStop(false, micStatus);
   };
 
-  const onOpenMic = () => {
+  const onOpenMic = async () => {
     setMicStatus(true);
+    await onStartOrStop(cameraStatus, true);
   };
 
-  const onOffMic = () => {
+  const onOffMic = async () => {
     setMicStatus(false);
+    await onStartOrStop(cameraStatus, false);
   };
 
-  const onEnableCamera = () => {
-    stream.current?.getVideoTracks().forEach((track) => (track.enabled = true));
-  };
+  useWatch(videoInput, ([{ deviceId } = { deviceId: undefined }]) => {
+    setSelectedCamera(deviceId);
+  });
 
-  const onDisableCamera = () => {
-    stream.current
-      ?.getVideoTracks()
-      .forEach((track) => (track.enabled = false));
-  };
-
-  const onEnableMic = () => {
-    stream.current?.getAudioTracks().forEach((track) => (track.enabled = true));
-  };
-
-  const onDisableMic = () => {
-    stream.current
-      ?.getAudioTracks()
-      .forEach((track) => (track.enabled = false));
-  };
+  useWatch(audioInput, ([{ deviceId } = { deviceId: undefined }]) => {
+    setSelectedAudio(deviceId);
+  });
 
   return {
     cameraStatus,
     micStatus,
+    videoInput,
+    audioInput,
+
+    selectedCamera,
+    selectedAudio,
+    setSelectedCamera,
+    setSelectedAudio,
 
     stream,
 
@@ -72,10 +71,5 @@ export default function useMediaInput() {
     onOffCamera,
     onOpenMic,
     onOffMic,
-
-    onEnableCamera,
-    onDisableCamera,
-    onEnableMic,
-    onDisableMic,
   };
 }

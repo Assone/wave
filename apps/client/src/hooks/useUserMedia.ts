@@ -1,47 +1,53 @@
-import usePrevious from "./usePrevious.ts";
 import useSupport from "./useSupport.ts";
 
-interface UseUserMediaOptions {
-  constraints?: MediaStreamConstraints;
-}
-
-export default function useUserMedia(options?: UseUserMediaOptions) {
+export default function useUserMedia() {
   const stream = useRef<MediaStream>();
   const isSupported = useSupport(() => navigator?.mediaDevices?.getUserMedia);
   const [enabled, setEnabled] = useState(false);
-  const previousOptions = usePrevious(options);
 
-  const start = useCallback(async () => {
-    if (!isSupported || stream.current) return;
+  const startStreamHandler = useCallback(
+    async (constraints: MediaStreamConstraints) => {
+      if (!isSupported || stream.current) return;
 
-    stream.current = await navigator.mediaDevices.getUserMedia(
-      options?.constraints
-    );
+      stream.current = await navigator.mediaDevices.getUserMedia(constraints);
 
-    setEnabled(true);
+      return stream.current;
+    },
+    [isSupported]
+  );
 
-    return stream.current;
-  }, [isSupported, options?.constraints]);
-
-  const stop = () => {
-    const tracks = stream.current?.getTracks() || [];
-
-    tracks.forEach((track) => track.stop());
+  const stopStreamHandler = () => {
+    stream.current?.getTracks().forEach((track) => track.stop());
     stream.current = undefined;
-
-    setEnabled(false);
   };
 
-  const restart = useCallback(() => {
-    stop();
+  const start = useCallback(
+    async (constraints: MediaStreamConstraints) => {
+      await startStreamHandler(constraints);
 
-    return start();
-  }, [start]);
+      if (stream.current) {
+        setEnabled(true);
+      }
 
-  useEffect(() => {
-    if (enabled && options?.constraints !== previousOptions?.constraints)
-      void restart();
-  }, [enabled, options?.constraints, previousOptions?.constraints, restart]);
+      return stream.current;
+    },
+    [startStreamHandler]
+  );
+
+  const stop = useCallback(() => {
+    stopStreamHandler();
+
+    setEnabled(false);
+  }, []);
+
+  const restart = useCallback(
+    (constraints: MediaStreamConstraints) => {
+      stopStreamHandler();
+
+      return start(constraints);
+    },
+    [start]
+  );
 
   return {
     stream,
@@ -51,5 +57,6 @@ export default function useUserMedia(options?: UseUserMediaOptions) {
 
     start,
     stop,
+    restart,
   };
 }

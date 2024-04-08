@@ -10,10 +10,13 @@ const StreamMonitor: React.FC<StreamMonitorProps> = ({ stream, muted }) => {
   useEffect(() => {
     if (stream) {
       instance.current.srcObject = stream;
+      instance.current
+        .play()
+        .catch((e) => console.log("Could not play preview video", e));
     }
   }, [stream]);
 
-  return <video ref={instance} autoPlay muted={muted} />;
+  return <video ref={instance} autoPlay muted={muted} controls playsInline />;
 };
 
 export default StreamMonitor;

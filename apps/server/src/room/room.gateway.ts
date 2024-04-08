@@ -13,13 +13,11 @@ import { v4 as uuid } from 'uuid';
 import type { CreateAnswerDto } from './dto/create-answer.dto';
 import type { CreateIceCandidateDto } from './dto/create-ice-candidate.dto';
 import type { CreateOfferDto } from './dto/create-offer.dto';
-import { CreateRoomUserDto } from './dto/create-room-user.dto';
-import { CreateRoomDto } from './dto/create-room.dto';
-import { CreateSessionDto } from './dto/create-session.dto';
 import type { JoinDto } from './dto/join.dto';
 import { Message } from './entities/message.entity';
 import type { ClientInterface } from './interfaces/client.interface';
 import type { P2PMessage } from './interfaces/p2p-message.interface';
+import RoomManager from './models/RoomManager';
 import { RoomService } from './room.service';
 
 @WebSocketGateway({
@@ -32,6 +30,8 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
   server: Server;
 
   connectionPool = new Map<string, ClientInterface>();
+
+  roomManager = new RoomManager();
 
   constructor(private readonly roomService: RoomService) {}
 
@@ -50,21 +50,23 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
       `client id: ${client.id} disconnect, connection pool length: ${this.connectionPool.size}`,
     );
 
-    const { roomId, owner, streaming } = client.data;
-    const room = await this.roomService.findRoom(roomId);
+    const { roomId } = client.data;
+    const room = this.roomManager.rooms.get(roomId);
+    const user = room?.users.get(client.id);
 
     if (!roomId || !room) return;
 
-    if (room.closeOnOwnerLeave && owner) {
-      await this.roomService.removeRoom(roomId);
+    if (room.closeOnOwnerLeave && room.owner?.id === user?.id) {
+      this.roomManager.rooms.delete(roomId);
       return;
     }
 
-    if (streaming) {
-      await this.roomService.removeRoomSession(roomId, client.id);
+    if (user?.streaming) {
+      room.removeSessionByHostId(client.id);
     }
 
-    await this.roomService.removeRoomUser(roomId, client.id);
+    room.users.delete(client.id);
+    room.removeSessionByClientId(client.id);
   }
 
   @SubscribeMessage('offer')
@@ -74,19 +76,10 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() createOfferDto: CreateOfferDto,
   ) {
     const roomId = client.data.roomId;
-    // const users = await this.roomService.findRoomUser(roomId);
     const message = new Message<
       P2PMessage<{ offer: RTCSessionDescriptionInit }>
     >('answer', '', 200, createOfferDto);
 
-    // for (let i = 0; i < users.length; i++) {
-    //   const user = users[i];
-    //   const connection = this.connectionPool.get(user.id);
-
-    //   if (client.id === user.id || connection === undefined) continue;
-
-    //   connection.emit('offer', message);
-    // }
     client.to(roomId).emit('offer', message);
   }
 
@@ -97,19 +90,9 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() createAnswerDto: CreateAnswerDto,
   ) {
     const roomId = client.data.roomId;
-    // const users = await this.roomService.findRoomUser(roomId);
     const message = new Message<
       P2PMessage<{ answer: RTCSessionDescriptionInit }>
     >('answer', '', 200, createAnswerDto);
-
-    // for (let i = 0; i < users.length; i++) {
-    //   const user = users[i];
-    //   const connection = this.connectionPool.get(user.id);
-
-    //   if (client.id === user.id || connection === undefined) continue;
-
-    //   connection.emit('answer', message);
-    // }
 
     client.to(roomId).emit('answer', message);
   }
@@ -121,20 +104,11 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() createIceCandidateDto: CreateIceCandidateDto,
   ) {
     const roomId = client.data.roomId;
-    // const users = await this.roomService.findRoomUser(roomId);
     const message = new Message<
       P2PMessage<{ type: 'host' | 'client'; candidate: RTCIceCandidate }>,
       'iceCandidate'
     >('iceCandidate', '', 200, createIceCandidateDto);
 
-    // for (let i = 0; i < users.length; i++) {
-    //   const user = users[i];
-    //   const connection = this.connectionPool.get(user.id);
-
-    //   if (client.id === user.id || connection === undefined) continue;
-
-    //   connection.emit('addIceCandidate', message);
-    // }
     client.to(roomId).emit('addIceCandidate', message);
   }
 
@@ -144,54 +118,34 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client: ClientInterface,
     @MessageBody() joinDto: JoinDto,
   ) {
-    const room = await this.roomService.findRoom(joinDto.roomId);
-    const owner = room === null ? true : false;
+    this.roomManager.join(joinDto.roomId, client.id, joinDto);
 
     client.data.roomId = joinDto.roomId;
-    client.data.owner = owner;
+    // client.data.owner = newUser.owner;
     client.join(joinDto.roomId);
 
-    const createRoomUser = new CreateRoomUserDto();
-    createRoomUser.id = client.id;
-    createRoomUser.streaming = false;
-    createRoomUser.owner = owner;
+    const users = this.roomManager.getRoomUsers(joinDto.roomId);
+    const room = this.roomManager.rooms.get(joinDto.roomId);
 
-    if (!room) {
-      client.data.owner = true;
-
-      const createRoomDto = new CreateRoomDto();
-      createRoomDto.id = joinDto.roomId;
-      createRoomDto.closeOnOwnerLeave = joinDto.autoClose;
-
-      await this.roomService.createRoom(createRoomDto);
-    }
-
-    await this.roomService.createRoomUser(joinDto.roomId, createRoomUser);
-
-    const users = await this.roomService.findRoomUser(joinDto.roomId);
-
-    for (let i = 0; i < users.length; i++) {
-      const user = users[i];
-      const userConnection = this.connectionPool.get(user.id);
+    for (const [userId, user] of users) {
+      const connection = this.connectionPool.get(userId);
 
       if (
-        client.id === user.id ||
+        client.id === userId ||
         user.streaming === false ||
-        userConnection === undefined
-      ) {
+        connection === undefined
+      )
         continue;
-      }
 
       const id = uuid();
-      const createSession = new CreateSessionDto();
+      room.createSession(id, user.id, client.id);
 
-      createSession.roomId = joinDto.roomId;
-      createSession.hostId = user.id;
-      createSession.clientId = client.id;
-      createSession.sid = id;
-
-      this.roomService.createRoomSession(createSession);
-
+      const createHostSessionMessage = new Message<P2PMessage>(
+        'createHostSession',
+        '',
+        200,
+        { sid: id },
+      );
       const createClientSessionMessage = new Message<P2PMessage>(
         'createClientSession',
         '',
@@ -200,14 +154,8 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
           sid: id,
         },
       );
-      const createHostSessionMessage = new Message<P2PMessage>(
-        'createHostSession',
-        '',
-        200,
-        { sid: id },
-      );
 
-      userConnection.emit('createHostSession', createHostSessionMessage);
+      connection.emit('createHostSession', createHostSessionMessage);
       client.emit('createClientSession', createClientSessionMessage);
     }
   }
@@ -220,16 +168,25 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`start share, client id: ${client.id}`);
 
     const { roomId } = client.data;
-    const users = await this.roomService.findRoomUser(roomId);
+    const room = this.roomManager.rooms.get(roomId);
+    const user = room?.users.get(client.id);
 
-    client.data.streaming = true;
-    this.roomService.updateRoomUser(roomId, client.id, { streaming: true });
+    if (user) {
+      user.streaming = true;
+    }
 
-    if (users.length < 1) return;
+    if (room.users.size < 2) return;
 
     const id = uuid();
+
     const createHostSessionMessage = new Message<P2PMessage>(
       'createHostSession',
+      '',
+      200,
+      { sid: id },
+    );
+    const createClientSessionMessage = new Message<P2PMessage>(
+      'createClientSession',
       '',
       200,
       { sid: id },
@@ -237,51 +194,32 @@ export class RoomGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     client.emit('createHostSession', createHostSessionMessage);
 
-    for (let i = 0; i < users.length; i++) {
-      const user = users[i];
-      const userConnection = this.connectionPool.get(user.id);
+    for (const [userId] of room.users) {
+      const hasConnection = this.connectionPool.has(userId);
+      if (client.id === userId || hasConnection === false) continue;
 
-      if (client.id === user.id || userConnection === undefined) {
-        continue;
-      }
-
-      const createSession = new CreateSessionDto();
-      createSession.roomId = roomId;
-      createSession.hostId = client.id;
-      createSession.clientId = user.id;
-      createSession.sid = id;
-
-      this.roomService.createRoomSession(createSession);
-
-      if (userConnection === undefined) continue;
-
-      const createClientSessionMessage = new Message<P2PMessage>(
-        'createClientSession',
-        '',
-        200,
-        { sid: id },
-      );
-
-      userConnection.emit('createClientSession', createClientSessionMessage);
+      room.createSession(id, client.id, userId);
     }
+
+    client.to(roomId).emit('createClientSession', createClientSessionMessage);
   }
 
   @SubscribeMessage('stopShare')
   async stopShareScreen(@ConnectedSocket() client: ClientInterface) {
-    client.data.streaming = false;
-    const sessions = await this.roomService.findRoomSessionByUserId(
-      client.data.roomId,
-      client.id,
-    );
+    const room = this.roomManager.rooms.get(client.data.roomId);
+    const user = room.users.get(client.id);
 
-    for (let i = 0; i < sessions.length; i++) {
-      const session = sessions[i];
-      const { sid, clientId } = session;
-      const connection = this.connectionPool.get(clientId);
+    user.streaming = false;
 
-      const message = new Message<P2PMessage>('stopShare', '', 200, { sid });
+    for (const [sid, session] of room.sessions) {
+      if (user.id === session.hostId) {
+        const connection = this.connectionPool.get(user.id);
+        const message = new Message<P2PMessage>('stopShare', '', 200, { sid });
 
-      connection?.emit('stopShare', message);
+        connection?.emit('stopShare', message);
+      }
     }
+
+    room.removeSessionByHostId(client.id);
   }
 }
