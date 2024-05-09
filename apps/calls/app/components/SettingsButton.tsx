@@ -23,7 +23,7 @@ import {
   FormLabel,
   FormMessage,
 } from "./ui/form";
-import { Switch } from "./ui/switch";
+// import { Switch } from "./ui/switch";
 
 const FormSchema = z.object({
   videoInputDeviceId: z.string(),
@@ -96,29 +96,6 @@ const SettingsButton: React.FC = () => {
                     You can change your audio input device
                   </FormDescription>
                   <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="blur"
-              render={({ field }) => (
-                <FormItem className="">
-                  <div className="flex gap-4 items-center">
-                    <FormLabel>Background Blur</FormLabel>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled
-                        aria-readonly
-                      />
-                    </FormControl>
-                  </div>
-                  <div className="space-y-0.5">
-                    <FormDescription>Blur your background.</FormDescription>
-                  </div>
                 </FormItem>
               )}
             />

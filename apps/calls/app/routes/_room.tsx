@@ -37,15 +37,15 @@ const Room: React.FC = () => {
 
   const pushedVideoTransceiverId = usePushedTrack(
     connection,
-    userMedia.videoStreamTrack
+    userMedia.videoStreamTrack,
   );
   const pushedAudioTransceiverId = usePushedTrack(
     connection,
-    userMedia.audioStreamTrack
+    userMedia.audioStreamTrack,
   );
   const pushedScreenTransceiverId = usePushedTrack(
     connection,
-    userMedia.screenShareStreamTrack
+    userMedia.screenShareStreamTrack,
   );
 
   const { videoEnabled, audioEnabled, screenShareEnabled } = userMedia;

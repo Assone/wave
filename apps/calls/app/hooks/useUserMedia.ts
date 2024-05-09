@@ -155,7 +155,13 @@ export default function useUserMedia() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [
+    audioInputDeviceId,
+    audioInputLabel,
+    devices,
+    setAudioInputDeviceId,
+    setAudioInputLabel,
+  ]);
 
   useEffect(() => {
     let mounted = true;
@@ -214,7 +220,14 @@ export default function useUserMedia() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [
+    devices,
+    setVideoInputDeviceId,
+    setVideoInputLabel,
+    videoEnabled,
+    videoInputDeviceId,
+    videoInputLabel,
+  ]);
 
   useUnmount(() => {
     audioStreamTrack?.stop();
