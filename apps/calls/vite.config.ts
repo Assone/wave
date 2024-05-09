@@ -16,7 +16,4 @@ export default defineConfig({
     remix(),
     tsconfigPaths(),
   ],
-  build: {
-    sourcemap: true,
-  },
 });
